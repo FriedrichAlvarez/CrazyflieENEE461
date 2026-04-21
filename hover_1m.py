@@ -28,7 +28,7 @@ from cflib.positioning.motion_commander import MotionCommander
 from cflib.crazyflie.log import LogConfig
 
 # ── Configuration ──────────────────────────────────────────────
-URI = "radio://0/100/2M"
+URI = "radio://0/80/2M/E7E7E7E13"
 HOVER_HEIGHT = 1.0      # meters
 HOVER_TIME = 10          # seconds to hold position
 # ───────────────────────────────────────────────────────────────

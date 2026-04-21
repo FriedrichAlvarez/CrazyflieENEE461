@@ -79,7 +79,7 @@ from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncLogger import SyncLogger
 
 # ── Radio URI ──────────────────────────────────────────────
-URI = "radio://0/100/2M"    # ← Change to your radio URI
+URI = "radio://0/80/2M/E7E7E7E13"    # ← Change to your radio URI
 # ───────────────────────────────────────────────────────────
 
 # ── Flight parameters ──────────────────────────────────────

@@ -43,7 +43,7 @@ from cflib.crazyflie.log import LogConfig
 from cflib.positioning.motion_commander import MotionCommander
 
 # ── Configuration ──────────────────────────────────────────
-URI = "radio://0/100/2M"    # ← Change to match your radio URI
+URI = "radio://0/80/2M/E7E7E7E13"    # ← Change to match your radio URI
 HOVER_HEIGHT = 1.0          # meters above ground
 HOVER_TIME = 30             # seconds to hold position
 # ───────────────────────────────────────────────────────────

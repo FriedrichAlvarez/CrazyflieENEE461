@@ -45,7 +45,7 @@ from cflib.crazyflie.log import LogConfig
 from cflib.positioning.motion_commander import MotionCommander
 
 # ── Configuration ──────────────────────────────────────────
-URI = "radio://0/100/2M"    # ← Change to your radio URI
+URI = "radio://0/80/2M/E7E7E7E13"    # ← Change to your radio URI
 HOVER_HEIGHT = 1.0          # meters
 HOVER_TIME = 30             # seconds
 LOG_TO_CSV = True           # save flight data for comparison

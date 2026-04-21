@@ -13,7 +13,7 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
 # The URI your scan found — change if different
-URI = "radio://0/100/2M"
+URI = "radio://0/80/2M/E7E7E7E13"
 
 
 def main():
