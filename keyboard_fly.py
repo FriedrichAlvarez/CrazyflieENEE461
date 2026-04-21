@@ -1,9 +1,8 @@
 """
 keyboard_fly.py
-─────────────────────────────────────────────────────────────
 ENEE461 — Keyboard-Controlled Flight
 
-Control the Crazyflie with your Mac keyboard in real time!
+Control the Crazyflie with keyboard
 
 CONTROLS:
   ┌─────────────────────────────────────────────────┐
@@ -39,7 +38,7 @@ Usage:
   4. Use WASD + arrows to fly
   5. Press SPACEBAR to land, or ESC to emergency stop
 
-─────────────────────────────────────────────────────────────
+
 """
 
 import sys
@@ -61,9 +60,8 @@ from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.positioning.motion_commander import MotionCommander
 
-# ══════════════════════════════════════════════════════════
+
 #  CONFIGURATION
-# ══════════════════════════════════════════════════════════
 URI = "radio://0/80/2M/E7E7E7E13"
 
 DEFAULT_HEIGHT = 0.5    # takeoff height in meters
@@ -71,9 +69,9 @@ VELOCITY = 0.3          # movement speed in m/s (start slow!)
 YAW_RATE = 60           # rotation speed in degrees/s
 HEIGHT_STEP = 0.1       # how much ↑/↓ changes height per press cycle
 
-# ══════════════════════════════════════════════════════════
+
+
 #  STATE TRACKING
-# ══════════════════════════════════════════════════════════
 
 class FlightState:
     def __init__(self):
@@ -119,9 +117,10 @@ class FlightState:
 state = FlightState()
 
 
-# ══════════════════════════════════════════════════════════
+
+
+
 #  KEYBOARD HANDLERS
-# ══════════════════════════════════════════════════════════
 
 def on_key_press(key):
     """Called when a key is pressed."""
@@ -173,9 +172,10 @@ def on_key_release(key):
     state.update_velocities()
 
 
-# ══════════════════════════════════════════════════════════
+
+
+
 #  MAIN
-# ══════════════════════════════════════════════════════════
 
 def main():
     cflib.crtp.init_drivers()
