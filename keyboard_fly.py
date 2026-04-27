@@ -65,8 +65,8 @@ from cflib.positioning.motion_commander import MotionCommander
 URI = "radio://0/80/2M/E7E7E7E13"
 
 DEFAULT_HEIGHT = 0.5    # takeoff height in meters
-VELOCITY = 0.3          # movement speed in m/s (start slow!)
-YAW_RATE = 60           # rotation speed in degrees/s
+VELOCITY = 0.5          # movement speed in m/s (start slow!)
+YAW_RATE = 100           # rotation speed in degrees/s
 HEIGHT_STEP = 0.1       # how much ↑/↓ changes height per press cycle
 
 
