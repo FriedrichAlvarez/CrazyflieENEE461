@@ -14,12 +14,22 @@ Multiranger ranges:
 - range.left: Left side distance
 - range.right: Right side distance
 - range.zrange: Altitude (downward)
+
+Controls:
+- SPACEBAR: begin slow descent and landing
+- ESC: request immediate slow landing
 """
 
 import logging
 import time
 from typing import Optional, Dict
 from collections import defaultdict
+
+try:
+    from pynput import keyboard
+except ImportError:
+    print("pynput not installed. Run:\n  pip install pynput")
+    raise
 
 import cflib.crtp
 from cflib.crazyflie import Crazyflie
@@ -37,7 +47,7 @@ logger = logging.getLogger(__name__)
 OBSTACLE_DISTANCE = 0.5  # Trigger avoidance if object closer than 50cm
 
 # Target hover altitude (meters)
-TARGET_ALTITUDE = 1.0  # Higher altitude provides more safety margin
+TARGET_ALTITUDE = 0.5  # Keep drone low, near ground
 
 # Avoidance speeds (m/s)
 AVOIDANCE_SPEED = 0.3  # Speed to move away from obstacle
@@ -75,7 +85,7 @@ class ObstacleAvoidanceController:
     This is a simple but effective "bug algorithm" variant
     """
 
-    def __init__(self, crazyflie_uri: str = 'radio://0/80/2M/E7E7E7E7E7'):
+    def __init__(self, crazyflie_uri: str = 'radio://0/80/2M/E7E7E7E13'):
         """
         Initialize obstacle avoidance controller
 
@@ -85,6 +95,11 @@ class ObstacleAvoidanceController:
         self.uri = crazyflie_uri
         self.cf: Optional[Crazyflie] = None
         self.is_flying = False
+        self.landing_requested = False
+        self.is_landing = False
+        self.listener = None
+        self.landing_rate = 0.02  # meters per control cycle
+        self.landing_altitude_threshold = 0.15
 
         # Multiranger sensor readings (meters) - read as mm, convert to m
         self.ranges = {
@@ -164,28 +179,45 @@ class ObstacleAvoidanceController:
     def _log_data_received(self, timestamp, data, logconf):
         """Process incoming sensor data"""
         try:
-            # Convert from mm to meters (divide by 1000)
             if 'range.front' in data:
-                self.ranges['front'] = data['range.front'][0] / 1000.0
+                self.ranges['front'] = data['range.front'] / 1000.0
 
             if 'range.back' in data:
-                self.ranges['back'] = data['range.back'][0] / 1000.0
+                self.ranges['back'] = data['range.back'] / 1000.0
 
             if 'range.left' in data:
-                self.ranges['left'] = data['range.left'][0] / 1000.0
+                self.ranges['left'] = data['range.left'] / 1000.0
 
             if 'range.right' in data:
-                self.ranges['right'] = data['range.right'][0] / 1000.0
+                self.ranges['right'] = data['range.right'] / 1000.0
 
             if 'range.zrange' in data:
-                self.ranges['zrange'] = data['range.zrange'][0] / 1000.0
-                self.current_altitude = self.ranges['zrange']
+                zrange_m = data['range.zrange'] / 1000.0
+                if 0.0 < zrange_m < 5.0:  # Valid altitude range (0-5m)
+                    self.ranges['zrange'] = zrange_m
+                    self.current_altitude = zrange_m
 
             if 'pm.vbat' in data:
-                self.battery_voltage = data['pm.vbat'][0]
+                self.battery_voltage = data['pm.vbat']
 
         except Exception as e:
             logger.error(f"Error processing range data: {e}")
+
+    def _on_key_press(self, key):
+        if key == keyboard.Key.space:
+            self.landing_requested = True
+            self.is_landing = True
+            logger.info("SPACE pressed: starting slow landing")
+        elif key == keyboard.Key.esc:
+            self.landing_requested = True
+            self.is_landing = True
+            logger.warning("ESC pressed: immediate landing requested")
+
+    def _start_keyboard_listener(self):
+        if self.listener is None:
+            self.listener = keyboard.Listener(on_press=self._on_key_press)
+            self.listener.daemon = True
+            self.listener.start()
 
     def detect_obstacles(self) -> Dict[str, bool]:
         """
@@ -224,9 +256,9 @@ class ObstacleAvoidanceController:
 
         # Handle lateral obstacles (left/right) - these take priority
         if obstacles['left']:
-            vy = AVOIDANCE_SPEED  # Move right (positive vy)
+            vy = -AVOIDANCE_SPEED  # Move right (away from left obstacle)
         elif obstacles['right']:
-            vy = -AVOIDANCE_SPEED  # Move left (negative vy)
+            vy = AVOIDANCE_SPEED  # Move left (away from right obstacle)
 
         # Handle front/back obstacles
         if obstacles['front']:
@@ -236,10 +268,10 @@ class ObstacleAvoidanceController:
 
         # If conflicting obstacles (e.g., left and front), prefer lateral movement
         if obstacles['left'] and obstacles['front']:
-            vy = AVOIDANCE_SPEED
+            vy = -AVOIDANCE_SPEED
             vx = 0.0
         elif obstacles['right'] and obstacles['front']:
-            vy = -AVOIDANCE_SPEED
+            vy = AVOIDANCE_SPEED
             vx = 0.0
 
         return vx, vy
@@ -331,33 +363,35 @@ class ObstacleAvoidanceController:
                     self.avoidance_state = 'avoiding'
                 else:
                     vx, vy = 0.0, 0.0
-                    self.avoidance_state = 'hovering'
+                    self.avoidance_state = 'landing' if self.landing_requested else 'hovering'
 
-                # Altitude control
-                thrust_cmd = self.compute_altitude_thrust()
+                # Slow landing if requested
+                if self.landing_requested:
+                    self.target_altitude = max(0.0, self.target_altitude - self.landing_rate)
+                    if self.target_altitude <= self.landing_altitude_threshold:
+                        logger.info("Landing altitude reached; ending avoidance loop")
+                        break
 
-                # Send command to drone
-                # Crazyflie commander: send_setpoint(roll, pitch, yaw_rate, thrust)
-                # But we want velocity, so we use send_velocity_world()
-                # Format: (vx, vy, vz, yaw_rate)
+                # Send hover setpoint using onboard altitude hold
                 try:
-                    self.cf.commander.send_setpoint(vx, vy, 0, thrust_cmd)
-                except:
-                    # Fallback if velocity commands not available
-                    self.cf.commander.send_setpoint(0, 0, 0, thrust_cmd)
+                    self.cf.commander.send_hover_setpoint(vx, vy, 0, self.target_altitude)
+                except Exception as e:
+                    logger.warning(f"send_hover_setpoint failed: {e}")
+                    # Fallback to safety stop if hover is unavailable
+                    self.cf.commander.send_stop_setpoint()
 
                 # Log data
                 self.log_data.append({
                     'time': time.time() - start_time,
                     'state': self.avoidance_state,
                     'altitude': self.current_altitude,
+                    'target_altitude': self.target_altitude,
                     'front': self.ranges['front'],
                     'back': self.ranges['back'],
                     'left': self.ranges['left'],
                     'right': self.ranges['right'],
                     'vx': vx,
                     'vy': vy,
-                    'thrust': thrust_cmd,
                     'obstacles': obstacles,
                 })
 
@@ -404,17 +438,21 @@ class ObstacleAvoidanceController:
             logger.info(f"Max ranges observed: {dict(max_range_observed)}")
 
     def land(self):
-        """Land safely"""
+        """Land safely - use hover setpoint for gradual descent"""
         if not self.cf or not self.is_flying:
             return
 
-        logger.info("Landing...")
+        logger.info("Landing - slow descent...")
         try:
-            for thrust in range(35000, 0, -1000):
-                self.cf.commander.send_setpoint(0, 0, 0, thrust)
-                time.sleep(0.02)
+            land_start = time.time()
+            max_land_time = 10.0  # Don't descend for more than 10 seconds
 
-            self.cf.commander.send_setpoint(0, 0, 0, 0)
+            while self.current_altitude > self.landing_altitude_threshold and (time.time() - land_start) < max_land_time:
+                self.target_altitude = max(0.0, self.target_altitude - self.landing_rate)
+                self.cf.commander.send_hover_setpoint(0, 0, 0, self.target_altitude)
+                time.sleep(CONTROL_DT)
+
+            self.cf.commander.send_stop_setpoint()
             self.is_flying = False
             logger.info("Landing complete")
         except Exception as e:
@@ -484,17 +522,19 @@ def main():
         # Connect
         controller.connect()
         time.sleep(2)
+        controller._start_keyboard_listener()
+        time.sleep(1)
 
         # Takeoff
-        if controller.takeoff():
-            time.sleep(1)
+        if not controller.takeoff():
+            logger.error("Takeoff failed")
+            return
 
-            # Run avoidance
-            controller.fly_with_avoidance(duration=FLIGHT_DURATION)
+        # Fly with obstacle avoidance
+        controller.fly_with_avoidance(duration=FLIGHT_DURATION)
 
-        # Land
+        # Land safely
         controller.land()
-        time.sleep(1)
 
         # Plot results
         controller.plot_results()

@@ -61,7 +61,7 @@ class FlightController:
     Handles communication, sensor feedback, and command dispatch
     """
 
-    def __init__(self, crazyflie_uri: str = 'radio://0/80/2M/E7E7E7E7E7'):
+    def __init__(self, crazyflie_uri: str = 'radio://0/80/2M/E7E7E7E13'):
         """
         Initialize flight controller
 
